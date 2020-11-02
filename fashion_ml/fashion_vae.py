@@ -97,10 +97,27 @@ class FashionVAE(nn.Module):
 	def _conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1, ouput_padding = 1):
 		return nn.Sequential(
 			nn.ConvTranspose2d(in_channels, out_channels,
-				kernel_size = kernel_size, stride = stride, 
+				kernel_size = kerel_size, stride = stride, 
 				padding = padding, output_padding = output_padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
+
+
+	def reparameterize(self, mu, var)
+	    std = torch.exp(0.5 * var)
+        eps = torch.randn_like(std)
+        return eps * std + mu
+
+    def sample(self, n_samples, include_locations = False):
+
+    	rand_latent = torch.randn((n_samples, self.latent_dim))
+
+    	if include_locations:
+    		return rand_latent, self.decode(rand_latent)
+    	return self.decode(rand_latent)
+
+    def generate(self, x):
+    	self.forward(x)[0]
 
 	def encode(self, x):
 
@@ -121,6 +138,15 @@ class FashionVAE(nn.Module):
 		result = self.final_layer(result)
 
 		return result
+
+	def forward(self, x):
+		mu, var = self.encode(x)
+		z = self.reparamterize(mu, var)
+		r = self.decode(x)
+
+		return [r, x, mu, var]
+
+
 
 
 
