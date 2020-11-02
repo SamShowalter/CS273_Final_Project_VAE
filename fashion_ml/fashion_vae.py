@@ -53,22 +53,54 @@ class FashionVAE(nn.Module):
 		self.path = path 
 		self.name = name
 
-		blocks = []
+		encoder_blocks = []
 
 		for dim in h_dims:
-			blocks.append(self._conv_norm_block(in_channels, dim))
+			blocks.append(self._conv_norm_block_encoder(in_channels, dim))
 			in_channels = dim
 
-		self.encoder = nn.Sequential(*blocks)
+		self.encoder = nn.Sequential(*encoder_blocks)
 		self.fc_mu = nn.Linear(h_dims[-1]*4, latent_dim)
 		self.fc_var = nn.Linear(h_dims[-1]*4, latent_dim)
 
+		decoder_blocks = []
 
-	def _conv_norm_block(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
+		for dim in range(len(h_dims) - 1, -1, -1):
+			decoder_blocks.append(self._conv_norm_block_decoder(h_dims[i+1], h_dims[i]))
+
+
+		self.decoder = nn.Sequential(*decoder_blocks)
+
+		self.final_layer = nn.Sequential(
+                            nn.ConvTranspose2d(h_dims[-1],
+                                               h_dims[-1],
+                                               kernel_size=3,
+                                               stride=2,
+                                               padding=1,
+                                               output_padding=1),
+                            nn.BatchNorm2d(h_dims[-1]),
+                            nn.LeakyReLU(),
+                            nn.Conv2d(h_dims[-1], out_channels= 3,
+                                      kernel_size= 3, padding= 1),
+                            nn.Tanh())
+
+
+	def _conv_norm_block_encoder(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
 		return nn.Sequential(
 			nn.Conv2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, padding = padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
+
+	def _conv_norm_block_decoder(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1, ouput_padding = 1):
+		return nn.Sequential(
+			nn.ConvTranspose2d(in_channels, out_channels,
+				kernel_size = kernel_size, stride = stride, 
+				padding = padding, output_padding = output_padding),
+			nn.BatchNorm2d(out_channels),
+			nn.LeakyReLU())
+
+
+
 
 		
