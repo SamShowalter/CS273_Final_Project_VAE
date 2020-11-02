@@ -61,7 +61,7 @@ class FashionVAE(nn.Module):
 
 		self.encoder = nn.Sequential(*blocks)
 		self.fc_mu = nn.Linear(h_dims[-1]*4, latent_dim)
-		self.fc_var = nn.Linear(h_dims[-1]*4)
+		self.fc_var = nn.Linear(h_dims[-1]*4, latent_dim)
 
 
 	def _conv_norm_block(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
