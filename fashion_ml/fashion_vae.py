@@ -39,10 +39,36 @@ from torch.nn.parameter import Parameter
 class FashionVAE(nn.Module):
 
 	def __init__(self,
-
+		in_channels = 3,
 		input_dim = 28*28,
+		latent_dim = 2,
+		h_dims = [32,64,128,256],
 		path = None,
-		name = 'FashionVAE'):
+		name = 'FashionVAE',
+		):
 		super(FashionVAE, self).__init__()
+		self.in_channels = in_channels
+		self.latent_dim = latent_dim
+		self.hidden_dims = h_dims
+		self.path = path 
+		self.name = name
 
-		self.
+		blocks = []
+
+		for dim in h_dims:
+			blocks.append(self._conv_norm_block(in_channels, dim))
+			in_channels = dim
+
+		self.encoder = nn.Sequential(*blocks)
+		self.fc_mu = nn.Linear(h_dims[-1]*4, latent_dim)
+		self.fc_var = nn.Linear(h_dims[-1]*4)
+
+
+	def _conv_norm_block(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
+		return nn.Sequential(
+			nn.Conv2d(in_channels, out_channels,
+				kernel_size = kernel_size, stride = stride, padding = padding),
+			nn.BatchNorm2d(out_channels),
+			nn.LeakyReLU())
+
+		
