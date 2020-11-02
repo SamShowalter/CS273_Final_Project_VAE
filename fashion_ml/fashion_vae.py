@@ -63,6 +63,8 @@ class FashionVAE(nn.Module):
 		self.fc_mu = nn.Linear(h_dims[-1]*4, latent_dim)
 		self.fc_var = nn.Linear(h_dims[-1]*4, latent_dim)
 
+		self.decoder_latent_space = nn.Linear(latent_dim, hiddem_dims[-1]*4)
+
 		decoder_blocks = []
 
 		for dim in range(len(h_dims) - 1, -1, -1):
@@ -85,20 +87,42 @@ class FashionVAE(nn.Module):
                             nn.Tanh())
 
 
-	def _conv_norm_block_encoder(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
+	def _conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
 		return nn.Sequential(
 			nn.Conv2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, padding = padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
 
-	def _conv_norm_block_decoder(in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1, ouput_padding = 1):
+	def _conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1, ouput_padding = 1):
 		return nn.Sequential(
 			nn.ConvTranspose2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, 
 				padding = padding, output_padding = output_padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
+
+	def encode(self, x):
+
+		enc = self.encoder(x)
+		enc_flat = torch.flatten(enc, start_dim = 1)
+		mu = self.fc_mu(enc_flat)
+		var = self.fc_var(enc_flat)
+
+		return [mu, var]
+
+	def decode(self, z):
+		dec = self.decoder_latent_space(z)
+
+		#WHY IS THIS (2,2) at end
+		dec_reshape = dec.view(-1, h_dim[-1], 2, 2)
+
+		result = self.decoder(dec_reshape)
+		result = self.final_layer(result)
+
+		return result
+
+
 
 
 
