@@ -36,13 +36,31 @@ from torch.nn.parameter import Parameter
 # VAE Network
 #####################################################################################
 
+
+'''
+Two big things
+- Size of input
+- size of latent dimension 
+
+reconstruction loss function more data driven 
+- MSE assumes that it is a normal distribution -- Unnormalized likelihood of normal dist
+
+How to weight total loss
+- Paper talks about this : beta VAE - https://openreview.net/forum?id=Sy2fzU9gl
+- Beta is set
+- Also depends on the dimensionality of things
+- KL divergence proportional to latent space
+- Minibatch of n should still have equal weight to everything
+
+'''
+
 class FashionVAE(nn.Module):
 
 	def __init__(self,
 		in_channels = 3,
 		input_dim = 28*28,
 		latent_dim = 2,
-		h_dims = [32,64,128,256],
+		h_dims = [32,64,128],
 		path = None,
 		name = 'FashionVAE',
 		):
@@ -60,10 +78,11 @@ class FashionVAE(nn.Module):
 			in_channels = dim
 
 		self.encoder = nn.Sequential(*encoder_blocks)
-		self.fc_mu = nn.Linear(h_dims[-1]*4, latent_dim)
-		self.fc_var = nn.Linear(h_dims[-1]*4, latent_dim)
+		#(3,28,28) -> (32,10,10) -> (64,3,3) -> (128,1,1)
+		self.fc_mu = nn.Linear(h_dims[-1], latent_dim)
+		self.fc_var = nn.Linear(h_dims[-1], latent_dim)
 
-		self.decoder_latent_space = nn.Linear(latent_dim, hiddem_dims[-1]*4)
+		self.decoder_latent_space = nn.Linear(latent_dim, hiddem_dims[-1])
 
 		decoder_blocks = []
 
@@ -76,25 +95,22 @@ class FashionVAE(nn.Module):
 		self.final_layer = nn.Sequential(
                             nn.ConvTranspose2d(h_dims[-1],
                                                h_dims[-1],
-                                               kernel_size=3,
-                                               stride=2,
+                                               kernel_size=4,
+                                               stride=3,
                                                padding=1,
                                                output_padding=1),
                             nn.BatchNorm2d(h_dims[-1]),
-                            nn.LeakyReLU(),
-                            nn.Conv2d(h_dims[-1], out_channels= 3,
-                                      kernel_size= 3, padding= 1),
                             nn.Tanh())
 
 
-	def _conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1):
+	def _conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 4, stride = 3, padding = 1):
 		return nn.Sequential(
 			nn.Conv2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, padding = padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
 
-	def _conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 3, stride = 2, padding = 1, ouput_padding = 1):
+	def _conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 4, stride = 3, padding = 1, ouput_padding = 1):
 		return nn.Sequential(
 			nn.ConvTranspose2d(in_channels, out_channels,
 				kernel_size = kerel_size, stride = stride, 
@@ -131,8 +147,7 @@ class FashionVAE(nn.Module):
 	def decode(self, z):
 		dec = self.decoder_latent_space(z)
 
-		#WHY IS THIS (2,2) at end
-		dec_reshape = dec.view(-1, h_dim[-1], 2, 2)
+		dec_reshape = dec.view(-1, h_dim[-1])
 
 		result = self.decoder(dec_reshape)
 		result = self.final_layer(result)
