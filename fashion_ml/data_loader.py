@@ -43,15 +43,14 @@ rotation_transform = RotationTransform(angle=90)
 normalize = None
 
 transform_train = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        normalize
+        transforms.ToTensor()
+        # normalize
       
     ])
 
 transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        normalize
+        transforms.ToTensor()
+        # normalize
     ])
 
 
@@ -59,7 +58,7 @@ transform_test = transforms.Compose([
 # Dataloader object
 #####################################################################################
 
-class EZ_DataLoader:
+class EZ_Dataloader:
 
 	def __init__(self,  train_source,
 						transform_train = transform_train,
@@ -71,7 +70,6 @@ class EZ_DataLoader:
 		self.root_storage = root_storage
 		self.train_source = train_source
 		self.train_loader = None 
-		self.no_train = no_train
 		self.test_loader = None
 
 		self.transform_train = transform_train
@@ -123,6 +121,8 @@ class EZ_DataLoader:
 			loader = torch.utils.data.DataLoader(
 									source_dict["source"](
 										self.root_storage + source_dict["path"], 
+										download = True,
+										train = train,
 										transform = self.transform_train if transform_train else self.transform_test),
 									batch_size = batch_size,
 									shuffle = shuffle,
@@ -152,8 +152,7 @@ class EZ_DataLoader:
 	                                                batch_size, 
 	                                                shuffle = shuffle,
 	                                                transform_train = transform_train,
-	                                                train = train, 
-	                                                ood = False)
+	                                                train = train)
 
 	def reset_test_loader(self, batch_size = 1, shuffle = False, train = False, transform_train = False):
 
@@ -161,17 +160,8 @@ class EZ_DataLoader:
 	                                                batch_size,
 	                                                shuffle = shuffle, 
 	                                                transform_train = transform_train,
-	                                                train = False, 
-	                                                ood = False)
+	                                                train = False)
 								
 
 	
 
-#####################################################################################
-# TESTING -- COMMENT OUT EVERYTHING BELOW
-#####################################################################################
-
-
-# loader = OOD_DataLoader("CIFAR10")
-# loader.build_train_test_loader()
-# loader.build_ood_loader(["MNIST","KMNIST", "SVHN"])
