@@ -68,13 +68,14 @@ class FashionVAE(nn.Module):
 		self.in_channels = in_channels
 		self.latent_dim = latent_dim
 		self.hidden_dims = h_dims
+		self.reconstruction_loss = F.mse_loss
 		self.path = path 
 		self.name = name
 
 		encoder_blocks = []
 
 		for dim in h_dims:
-			encoder_blocks.append(self._conv_norm_block_encoder(in_channels, dim))
+			encoder_blocks.append(self.__conv_norm_block_encoder(in_channels, dim))
 			in_channels = dim
 
 		self.encoder = nn.Sequential(*encoder_blocks)
@@ -87,7 +88,7 @@ class FashionVAE(nn.Module):
 		decoder_blocks = []
 
 		for dim in range(len(h_dims) - 2, -1, -1):
-			decoder_blocks.append(self._conv_norm_block_decoder(h_dims[dim+1], h_dims[dim]))
+			decoder_blocks.append(self.__conv_norm_block_decoder(h_dims[dim+1], h_dims[dim]))
 
 		self.decoder = nn.Sequential(*decoder_blocks)
 
@@ -105,14 +106,14 @@ class FashionVAE(nn.Module):
                             nn.Tanh())
 
 
-	def _conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 4, stride = 3, padding = 1):
+	def __conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 4, stride = 3, padding = 1):
 		return nn.Sequential(
 			nn.Conv2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, padding = padding),
 			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
 
-	def _conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 4, 
+	def __conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 4, 
 		stride = 3, padding = 1, output_padding = 1):
 		return nn.Sequential(
 			nn.ConvTranspose2d(in_channels, out_channels,
@@ -133,8 +134,8 @@ class FashionVAE(nn.Module):
 		rand_latent = torch.randn((n_samples, self.latent_dim))
 
 		if include_locations:
-			return rand_latent, self.decode(rand_latent)
-		return self.decode(rand_latent)
+			return rand_latent, self.decode(rand_latent.cuda())
+		return self.decode(rand_latent.cuda())
 
 	def generate(self, x):
 		self.forward(x)[0]
@@ -154,17 +155,45 @@ class FashionVAE(nn.Module):
 		dec_reshape = dec.view(-1, self.hidden_dims[-1], 1,1)
 
 		result = self.decoder(dec_reshape)
-		print(result.shape)
+		# print(result.shape)
 		result = self.final_layer(result)
 
 		return result
 
+
+	# def training_step(self, batch, batch_idx, optimizer_idx = 0):
+	# 	real_img, labels = batch
+	# 	self.curr_device = real_img.device
+
+	# 	results = self.forward(real_img, labels = labels)
+	# 	train_loss = self.model.loss_function(*results,
+	# 	                                      kld_weight = self.params['batch_size']/ self.num_train_imgs,
+	# 	                                      optimizer_idx=optimizer_idx,
+	# 	                                      batch_idx = batch_idx)
+
+ #        self.logger.experiment.log({key: val.item() for key, val in train_loss.items()})
+
+ #        return train_loss
+
+	def loss_function(self, reconstruction, input_img, mu, var,
+		kld_weight):
+
+		reconstruction_loss = self.reconstruction_loss(reconstruction, input_img)
+
+		kld_loss = torch.mean(-0.5*torch.sum(1 + var - mu**2 - var.exp(), dim = 1), dim = 0)
+
+		loss = reconstruction_loss + kld_weight*kld_loss
+		return loss
+
+
 	def forward(self, x):
 		mu, var = self.encode(x)
 		z = self.reparameterize(mu, var)
-		print(z.shape)
+		# print("HI")
+		# print(z.shape)
+		# print("Checking")
 		r = self.decode(z)
-		print(r.shape)
+		# print(r.shape)
 
 		return [r, x, mu, var]
 

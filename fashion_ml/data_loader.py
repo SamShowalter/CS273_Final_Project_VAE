@@ -98,7 +98,7 @@ class EZ_Dataloader:
 			return pkl.load(file)
 
 		
-	def __build_data_loader(self, source, batch_size = 1, train = False, ood = True, transform_train = True, shuffle = False):
+	def __build_data_loader(self, source, batch_size = 1, train = False, transform_train = True, shuffle = False):
 
 		loader = None
 		source_dict = self.sources[source]
@@ -129,21 +129,39 @@ class EZ_Dataloader:
 								)
 		return loader 
 
+	def build_data_loader(self, data, batch_size = 128, shuffle = False):
+
+		return torch.utils.data.DataLoader(
+									data,
+									batch_size = batch_size,
+									shuffle = shuffle,
+								)
+
+	def build_val_loader(self, frac = 0.1):
+
+		batch_size = self.train_loader.batch_size
+
+		data = self.train_loader.dataset 
+		lens = [int((1-frac)*len(data)), int(frac*len(data))]
+		train_data, val_data = torch.utils.data.dataset.random_split(data, lens)
+
+		self.train_loader = self.build_data_loader(train_data, batch_size = batch_size)
+		self.val_loader = self.build_data_loader(val_data, batch_size = batch_size)
+
+
 	def build_train_test_loader(self):
 
 		self.train_loader = self.__build_data_loader(self.train_source,
 													batch_size = 128, 
 													train = True, 
 													transform_train = True,
-													shuffle = False,
-													ood = False)
+													shuffle = False)
 
 		self.test_loader = self.__build_data_loader(self.train_source,
 													batch_size = 128, 
 													train = False, 
 													transform_train = False,
-													shuffle = False,
-													ood = False)
+													shuffle = False)
 
 
 	def reset_train_loader(self, batch_size = 1, shuffle = False, train = False, transform_train = True):
