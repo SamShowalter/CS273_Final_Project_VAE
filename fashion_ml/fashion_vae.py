@@ -81,7 +81,7 @@ class FashionVAE(nn.Module):
 		self.encoder = nn.Sequential(*encoder_blocks)
 		#(1,28,28) -> (32,10,10) -> (64,3,3) -> (128,1,1)
 		self.fc_mu = nn.Linear(h_dims[-1], latent_dim)
-		self.fc_var = nn.Linear(h_dims[-1], latent_dim)
+		self.fc_log_var = nn.Linear(h_dims[-1], latent_dim)
 
 		self.decoder_latent_space = nn.Linear(latent_dim, h_dims[-1])
 
@@ -137,15 +137,18 @@ class FashionVAE(nn.Module):
 			return rand_latent, self.decode(rand_latent.cuda())
 		return self.decode(rand_latent.cuda())
 
+	def sample_latent(self, latent):
+		return self.decode(torch.tensor(latent).cuda()).detach().cpu()
+
 	def generate(self, x):
 		self.forward(x)[0]
 
 	def encode(self, x):
-
 		enc = self.encoder(x)
 		enc_flat = torch.flatten(enc, start_dim = 1)
 		mu = self.fc_mu(enc_flat)
-		var = self.fc_var(enc_flat)
+		log_var = self.fc_log_var(enc_flat)
+		var = torch.exp(log_var)
 
 		return [mu, var]
 
@@ -161,26 +164,13 @@ class FashionVAE(nn.Module):
 		return result
 
 
-	# def training_step(self, batch, batch_idx, optimizer_idx = 0):
-	# 	real_img, labels = batch
-	# 	self.curr_device = real_img.device
-
-	# 	results = self.forward(real_img, labels = labels)
-	# 	train_loss = self.model.loss_function(*results,
-	# 	                                      kld_weight = self.params['batch_size']/ self.num_train_imgs,
-	# 	                                      optimizer_idx=optimizer_idx,
-	# 	                                      batch_idx = batch_idx)
-
- #        self.logger.experiment.log({key: val.item() for key, val in train_loss.items()})
-
- #        return train_loss
-
 	def loss_function(self, reconstruction, input_img, mu, var,
 		kld_weight):
 
 		reconstruction_loss = self.reconstruction_loss(reconstruction, input_img)
-
-		kld_loss = torch.mean(-0.5*torch.sum(1 + var - mu**2 - var.exp(), dim = 1), dim = 0)
+		# print(var)
+		kld_loss = 0.5*torch.mean(var + mu**2 - torch.log(var) - 1)
+		# print(kld_loss)
 
 		loss = reconstruction_loss + kld_weight*kld_loss
 		return loss
