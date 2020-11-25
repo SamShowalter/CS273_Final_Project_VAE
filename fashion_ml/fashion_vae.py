@@ -172,6 +172,28 @@ class FashionVAE(nn.Module):
 			torch.squeeze(((input_img - reconstruction)**2).sum(axis = 3).sum(axis = 2))
 			, axis = 0)
 
+	def interpolate(self,img1,img2,num_samples = 5):
+
+		mu1, logvar1 = self.encode(img1.cuda())
+		loc1 = self.reparameterize(mu1, logvar1)
+
+		mu2, logvar2 = self.encode(img2.cuda())
+		loc2 = self.reparameterize(mu2, logvar2)
+		
+		diff = loc2 - loc1
+
+		inter_samples = []
+
+		with torch.no_grad():
+			for i in range(num_samples):
+				latent = loc1 + (diff / num_samples)*i
+				print(latent)
+
+				inter_samples.append(self.decode(latent).cpu())
+
+		return inter_samples
+
+
 
 	def loss_function(self, reconstruction, input_img, mu, logvar, beta = 5, include_all = False):
 
