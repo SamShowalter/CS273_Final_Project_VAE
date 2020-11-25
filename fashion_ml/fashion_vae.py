@@ -17,6 +17,7 @@
 #Math libraries
 import random
 import numpy as np
+import sys
 
 #Pytorch imports
 import torch
@@ -59,75 +60,71 @@ class FashionVAE(nn.Module):
 	def __init__(self,
 		in_channels = 1,
 		input_dim = 28*28,
-		latent_dim = 2,
-		h_dims = [32,64,128],
+		latent_dim = 3,
+		h_dims = [32,32,64],
+		strides = [1,2,2],
+		padding = [2,1,1],
 		path = None,
 		name = 'FashionVAE',
 		):
+		'''
+		(n_samples, 1, 28 ,28)
+		(n_samples, 32,14,14)
+		(n_samples, 32,14,14)
+		(n_sampes, 64,7,7)
+
+		'''
 		super(FashionVAE, self).__init__()
 		self.in_channels = in_channels
 		self.latent_dim = latent_dim
 		self.hidden_dims = h_dims
-		self.reconstruction_loss = F.mse_loss
+		self.reconstruction_loss = self.__MSE
 		self.path = path 
+		self.strides = strides
+		self.padding = padding
 		self.name = name
 
 		encoder_blocks = []
 
-		for dim in h_dims:
-			encoder_blocks.append(self.__conv_norm_block_encoder(in_channels, dim))
+		for dim, stride, pad in zip(h_dims,strides,padding):
+			encoder_blocks.append(self.__conv_norm_block_encoder(in_channels, dim, 
+				stride = stride, padding = pad))
 			in_channels = dim
 
 		self.encoder = nn.Sequential(*encoder_blocks)
 		#(1,28,28) -> (32,10,10) -> (64,3,3) -> (128,1,1)
-		self.fc_mu = nn.Linear(h_dims[-1], latent_dim)
-		self.fc_log_var = nn.Linear(h_dims[-1], latent_dim)
+		self.fc_mu = nn.Linear(h_dims[-1]*7*7, latent_dim)
+		self.fc_log_var = nn.Linear(h_dims[-1]*7*7, latent_dim)
 
-		self.decoder_latent_space = nn.Linear(latent_dim, h_dims[-1])
+		self.decoder_latent_space = nn.Sequential(
+			nn.Linear(latent_dim, h_dims[-1]*7*7),
+			nn.LeakyReLU())
 
 		decoder_blocks = []
 
-		for dim in range(len(h_dims) - 2, -1, -1):
-			decoder_blocks.append(self.__conv_norm_block_decoder(h_dims[dim+1], h_dims[dim]))
+		t_hdims = [self.in_channels] + h_dims
+		for dim in range(len(t_hdims)-1, 0, -1):
+			decoder_blocks.append(self.__conv_norm_block_decoder(t_hdims[dim], t_hdims[dim-1],
+				stride = strides[dim-1], padding = padding[dim-1], 
+				output_padding = 1 if t_hdims[dim] == t_hdims[dim-1] else 0))
+			if dim != 1:
+				decoder_blocks.append(nn.LeakyReLU())
 
 		self.decoder = nn.Sequential(*decoder_blocks)
 
-		self.final_layer = nn.Sequential(
-                            nn.ConvTranspose2d(h_dims[0],
-                                               h_dims[0],
-                                               kernel_size=4,
-                                               stride=3,
-                                               padding=1,
-                                               output_padding=1),
-                            nn.BatchNorm2d(h_dims[0]),
-                            nn.LeakyReLU(),
-                            nn.Conv2d(h_dims[0], out_channels= 1,
-                                      kernel_size= 2, padding= 1),
-                            nn.Tanh())
 
-
-	def __conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 4, stride = 3, padding = 1):
+	def __conv_norm_block_encoder(self, in_channels, out_channels, kernel_size = 4, stride = 2, padding = 1):
 		return nn.Sequential(
 			nn.Conv2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, padding = padding),
-			nn.BatchNorm2d(out_channels),
 			nn.LeakyReLU())
 
 	def __conv_norm_block_decoder(self, in_channels, out_channels, kernel_size = 4, 
-		stride = 3, padding = 1, output_padding = 1):
-		return nn.Sequential(
-			nn.ConvTranspose2d(in_channels, out_channels,
+		stride = 2, padding = 1, output_padding = 0):
+		return nn.ConvTranspose2d(in_channels, out_channels,
 				kernel_size = kernel_size, stride = stride, 
 				padding = padding,
-				 output_padding =  padding),
-			nn.BatchNorm2d(out_channels),
-			nn.LeakyReLU())
-
-
-	def reparameterize(self, mu, var):
-		std = torch.exp(0.5 * var)
-		eps = torch.randn_like(std)
-		return eps * std + mu
+				 output_padding =  output_padding)
 
 	def sample(self, n_samples, include_locations = False):
 
@@ -143,50 +140,61 @@ class FashionVAE(nn.Module):
 	def generate(self, x):
 		self.forward(x)[0]
 
+
+	def reparameterize(self, mu, logvar):
+		std = torch.exp(0.5 * logvar)
+		eps = torch.randn_like(std)
+		return eps * std + mu
+
+	
+
 	def encode(self, x):
 		enc = self.encoder(x)
 		enc_flat = torch.flatten(enc, start_dim = 1)
 		mu = self.fc_mu(enc_flat)
-		log_var = self.fc_log_var(enc_flat)
-		var = torch.exp(log_var)
+		logvar = self.fc_log_var(enc_flat)
 
-		return [mu, var]
+		return [mu, logvar]
 
 	def decode(self, z):
 		dec = self.decoder_latent_space(z)
 
-		dec_reshape = dec.view(-1, self.hidden_dims[-1], 1,1)
+		dec_reshape = dec.view(-1, self.hidden_dims[-1],7,7)
 
 		result = self.decoder(dec_reshape)
-		# print(result.shape)
-		result = self.final_layer(result)
 
 		return result
 
 
-	def loss_function(self, reconstruction, input_img, mu, var,
-		kld_weight):
+	def __MSE(self, input_img, reconstruction, dim = 0):
 
-		reconstruction_loss = self.reconstruction_loss(reconstruction, input_img)
-		# print(var)
-		kld_loss = 0.5*torch.mean(var + mu**2 - torch.log(var) - 1)
-		# print(kld_loss)
+		return torch.mean(
+			torch.squeeze(((input_img - reconstruction)**2).sum(axis = 3).sum(axis = 2))
+			, axis = 0)
 
-		loss = reconstruction_loss + kld_weight*kld_loss
+
+	def loss_function(self, reconstruction, input_img, mu, logvar, beta = 5, include_all = False):
+
+		var = torch.exp(logvar)
+		reconstruction_loss = self.reconstruction_loss( input_img, reconstruction)
+
+		kld_loss = torch.mean(0.5* torch.sum(var + mu**2 - torch.log(var) - 1, dim = 1))
+
+
+		loss = reconstruction_loss + kld_loss*beta
+		if include_all:
+			return loss, reconstruction_loss, kld_loss
+
 		return loss
 
 
 	def forward(self, x):
-		mu, var = self.encode(x)
-		z = self.reparameterize(mu, var)
-		# print("HI")
-		# print(z.shape)
-		# print("Checking")
+		mu, logvar = self.encode(x)
+		z = self.reparameterize(mu, logvar)
+
 		r = self.decode(z)
-		# print(r.shape)
 
-		return [r, x, mu, var]
-
+		return [r, x, mu, logvar]
 
 
 
